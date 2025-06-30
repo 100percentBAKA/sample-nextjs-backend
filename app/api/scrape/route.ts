@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as cheerio from "cheerio";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const url = searchParams.get("url");
+    const selector = searchParams.get("selector");
 
     // Validate the URL parameter
     if (!url) {
@@ -55,6 +57,55 @@ export async function GET(request: NextRequest) {
     // Get the HTML content
     const html = await response.text();
 
+    // If selector is provided, extract specific content
+    if (selector) {
+      try {
+        const $ = cheerio.load(html);
+        const elements = $(selector);
+
+        if (elements.length === 0) {
+          return NextResponse.json({
+            success: false,
+            url: url,
+            error: `No elements found with selector: ${selector}`,
+            contentType: response.headers.get("content-type") || "text/html",
+            status: response.status,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // Extract text content and HTML for each matching element
+        const extractedContent = elements
+          .map((index, element) => ({
+            text: $(element).text().trim(),
+            html: $.html(element),
+            index: index,
+          }))
+          .get();
+
+        return NextResponse.json({
+          success: true,
+          url: url,
+          selector: selector,
+          elementsFound: elements.length,
+          extractedContent: extractedContent,
+          contentType: response.headers.get("content-type") || "text/html",
+          status: response.status,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (parseError) {
+        return NextResponse.json({
+          success: false,
+          url: url,
+          error: `Error parsing HTML with selector ${selector}: ${parseError}`,
+          contentType: response.headers.get("content-type") || "text/html",
+          status: response.status,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Return full HTML if no selector provided
     return NextResponse.json({
       success: true,
       url: url,
